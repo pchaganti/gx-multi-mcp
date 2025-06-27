@@ -34,18 +34,24 @@ uv run main.py --transport sse --host 0.0.0.0 --port 8080
 
 # With custom config file
 uv run main.py --config ./examples/config/mcp_k8s.json
+
+# Quick development run
+make run
 ```
 
 ### Testing
 ```bash
 # Individual test suites
-make test-proxy      # Core proxy functionality
+make test-proxy      # Core proxy functionality  
 make test-e2e        # End-to-end integration tests
 make test-lifecycle  # Client lifecycle management
 make test-k8s        # Kubernetes deployment tests (requires docker-build)
 
 # All tests
 make all-test
+
+# Run specific test file directly
+pytest -s tests/proxy_test.py
 ```
 
 ### Docker & Kubernetes
@@ -116,7 +122,11 @@ Configuration is JSON-based, defining backend MCP servers to connect to:
 ## Development Notes
 
 ### Tool Namespacing Implementation
-Tools are internally namespaced using `_make_key()` and `_split_key()` methods that create `server_name_tool_name` identifiers. This allows multiple servers to expose tools with the same base name without conflicts.
+Tools are internally namespaced using `_make_key()` and `_split_key()` static methods in `MCPProxyServer`:
+- `_make_key(server_name, tool_name)` creates `server_name_tool_name` identifiers
+- `_split_key(key)` splits namespaced keys back into `(server, tool)` tuples using first underscore
+- Namespaced tools are stored in `tool_to_server` dict mapping keys to `ToolMapping` objects
+- This allows multiple servers to expose tools with identical base names without conflicts
 
 ### Transport Modes
 - **STDIO**: Pipe-based communication for CLI tools and local agents
@@ -127,10 +137,20 @@ Tools are internally namespaced using `_make_key()` and `_split_key()` methods t
 - **Integration tests**: End-to-end flows with real MCP tools
 - **K8s tests**: Deployment and service exposure validation
 
+### Project Structure
+- `main.py` - Entry point CLI interface using `MultiMCP` class
+- `src/multimcp/multi_mcp.py` - Main orchestrator with `MCPSettings` and HTTP endpoints
+- `src/multimcp/mcp_proxy.py` - Core proxy server with request forwarding and capability aggregation
+- `src/multimcp/mcp_client.py` - Client lifecycle management using `AsyncExitStack`
+- `src/utils/logger.py` - Centralized Rich logging with `multi_mcp.*` namespace
+- `tests/` - Comprehensive test suite with mock MCP servers and fixtures
+- `examples/config/` - Sample configuration files for different deployment scenarios
+
 ### Dependencies
 Key dependencies include:
 - `mcp>=1.4.1` - Core MCP protocol implementation
-- `langchain-mcp-adapters` - LangChain integration utilities
+- `langchain-mcp-adapters` - LangChain integration utilities  
 - `starlette` + `uvicorn` - SSE HTTP server
 - `httpx-sse` - SSE client support
 - `rich` - Enhanced logging and console output
+- `pytest` + `pytest-asyncio` - Testing framework with async support
