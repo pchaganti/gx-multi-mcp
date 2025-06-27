@@ -27,3 +27,6 @@ coverage.xml
 # Secrets / credentials (only if created)
 .env
 .env.*
+
+# ignore anything in msc directory recursively
+msc/**
