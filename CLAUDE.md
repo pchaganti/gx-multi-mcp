@@ -167,3 +167,45 @@ Key dependencies include:
 - `httpx-sse` - SSE client support
 - `rich` - Enhanced logging and console output
 - `pytest` + `pytest-asyncio` - Testing framework with async support
+
+## MCP Server Status & Testing
+
+### Configured MCP Servers (msc/mcp.json)
+
+**GitHub MCP Server** ✅ **WORKING**
+- **Server**: `github` (Node.js via npx @modelcontextprotocol/server-github)
+- **Tool Prefix**: `mcp__multi-mcp__github_*`
+- **Test Action**: `github_search_repositories` - Successfully searched repositories
+- **Capabilities**: Repository management, issues, pull requests, file operations
+- **Authentication**: Uses GITHUB_PERSONAL_ACCESS_TOKEN environment variable
+
+**Brave Search MCP Server** ✅ **WORKING**  
+- **Server**: `brave-search` (Node.js via npx @modelcontextprotocol/server-brave-search)
+- **Tool Prefix**: `mcp__multi-mcp__brave-search_*`
+- **Test Action**: `brave_web_search` - Successfully performed web search
+- **Capabilities**: Web search, local business search
+- **Authentication**: Uses BRAVE_API_KEY environment variable
+
+**Context7 MCP Server** ✅ **WORKING**
+- **Server**: `context7` (Node.js via npx @upstash/context7-mcp)
+- **Tool Prefix**: `mcp__multi-mcp__context7_*`
+- **Test Actions**: `resolve-library-id` + `get-library-docs` - Successfully retrieved React documentation
+- **Capabilities**: Library documentation lookup, code examples, version-specific docs
+- **Authentication**: None required (public documentation service)
+
+### Tool Namespacing in Action
+All MCP tools are accessible through the multi-mcp proxy with the naming pattern:
+`mcp__multi-mcp__{server_name}_{tool_name}`
+
+**Example tested tools:**
+- `mcp__multi-mcp__github_search_repositories`
+- `mcp__multi-mcp__brave-search_brave_web_search`  
+- `mcp__multi-mcp__context7_resolve-library-id`
+- `mcp__multi-mcp__context7_get-library-docs`
+
+### Verification Status
+- **Last Tested**: 2025-06-27
+- **Test Environment**: Claude Code via multi-mcp proxy
+- **All Servers**: ✅ Functional and responsive
+- **Tool Discovery**: All namespaced tools properly exposed through proxy
+- **Error Handling**: Graceful fallback for server-specific failures
