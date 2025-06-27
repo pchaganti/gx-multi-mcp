@@ -66,6 +66,12 @@ kind load docker-image multi-mcp --name multi-mcp-test
 kubectl apply -f examples/k8s/multi-mcp.yaml
 ```
 
+### Docker Container Details
+- **Base Image**: `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` (Debian-based)
+- **Node.js Runtime**: Node.js 20.x installed for MCP servers requiring Node runtime
+- **Production Config**: Uses `./msc/mcp.json` with GitHub, Brave Search, and Context7 MCP servers
+- **Network**: Binds to `0.0.0.0` for container accessibility
+
 ### Dependency Management
 ```bash
 # Install dependencies
