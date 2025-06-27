@@ -10,7 +10,11 @@
       "Bash(docker stop:*)",
       "Bash(docker rm:*)",
       "Bash(mv:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "mcp__multi-mcp__github_search_repositories",
+      "mcp__multi-mcp__brave-search_brave_web_search",
+      "mcp__multi-mcp__context7_resolve-library-id",
+      "mcp__multi-mcp__context7_get-library-docs"
     ],
     "deny": []
   }
