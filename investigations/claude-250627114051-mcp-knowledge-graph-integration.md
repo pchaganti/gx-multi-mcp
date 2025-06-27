@@ -16,6 +16,36 @@ This investigation analyzes the integration possibilities between **multi-mcp** 
 
 ---
 
+## Critical Discovery: Tool Naming Convention Update
+
+### Important Implementation Note
+
+**Recent Discovery**: A critical tool naming fix was identified in `/Users/gm/sbox/zz_tmp/hello/multi-mcp-setup-guide.md` that affects all MCP integrations:
+
+#### The Fix:
+Claude's API requires tool names matching pattern `^[a-zA-Z0-9_-]{1,128}$`. Multi-MCP was using `::` separator, causing API errors.
+
+**Fixed in `src/multimcp/mcp_proxy.py`**:
+```python
+# Before (line ~309)
+return f"{server_name}::{item_name}"
+
+# After  
+return f"{server_name}_{item_name}"
+
+# Also updated split_key (line ~314)
+return key.split("_", 1)  # was split("::", 1)
+```
+
+**Result**: Tool names are now compliant: `weather_get_weather`, `knowledge-graph_add_memory`
+
+### Impact on Knowledge Graph Integration:
+- Tools will be named: `knowledge-graph_add_memory`, `knowledge-graph_search_nodes`, etc.
+- This fix is **already implemented** in current multi-mcp codebase
+- No additional changes needed for knowledge graph integration
+
+---
+
 ## Research Overview
 
 ### What is MCP Knowledge Graph?
@@ -67,7 +97,7 @@ This investigation analyzes the integration possibilities between **multi-mcp** 
 **Implementation**: Each project sets:
 ```bash
 export PROJECT_MEMORY_PATH="./memory/project-specific.jsonl"
-uv run main.py
+uv run main.py --transport sse
 ```
 
 ##### Option 2: Dynamic Configuration API ⭐ **BEST LONG-TERM**
@@ -101,12 +131,22 @@ curl -X POST http://localhost:8080/mcp_servers \
 
 ##### Option 3: Multiple Multi-MCP Instances
 **Current Workaround**: Run separate multi-mcp containers per project
+
+**Based on Setup Guide Patterns**:
 ```bash
 # Project A
-docker run -p 8080:8080 -v ./project-a-config:/app/msc multi-mcp
+docker run -d -p 8080:8080 \
+  --name multi-mcp-project-a \
+  -v $(pwd)/project-a-config:/app/mcp.json \
+  -v $(pwd)/project-a-memory:/app/memory \
+  multi-mcp:latest --transport sse --host 0.0.0.0
 
 # Project B  
-docker run -p 8081:8080 -v ./project-b-config:/app/msc multi-mcp
+docker run -d -p 8081:8080 \
+  --name multi-mcp-project-b \
+  -v $(pwd)/project-b-config:/app/mcp.json \
+  -v $(pwd)/project-b-memory:/app/memory \
+  multi-mcp:latest --transport sse --host 0.0.0.0
 ```
 
 ### 2. Docker Persistence Analysis
@@ -122,31 +162,47 @@ docker run -p 8081:8080 -v ./project-b-config:/app/msc multi-mcp
 
 #### Docker Implementation Strategy:
 
+**Based on Setup Guide Recommendations**:
+
 ##### Volume Mounting:
-```dockerfile
-# In multi-mcp Dockerfile
-VOLUME ["/app/memory"]
-ENV MEMORY_PATH=/app/memory/knowledge-graph.jsonl
+```bash
+# From setup guide pattern
+docker run -d -p 8080:8080 \
+  --name multi-mcp-with-knowledge \
+  -v $(pwd)/knowledge-memory:/app/memory \
+  -v $(pwd)/config-with-knowledge.json:/app/mcp.json \
+  multi-mcp:latest --transport sse --host 0.0.0.0
 ```
 
-##### Container Configuration:
-```bash
-# Mount persistent volume
-docker run -v $(pwd)/memory:/app/memory multi-mcp
+##### Enhanced Dockerfile:
+```dockerfile
+# Building on existing multi-mcp Dockerfile
+FROM multi-mcp:base
+
+# Add memory directory
+RUN mkdir -p /app/memory && chmod 755 /app/memory
+
+# Volume for persistent memory
+VOLUME ["/app/memory"]
+
+# Environment for memory path
+ENV MEMORY_PATH=/app/memory/knowledge-graph.jsonl
 ```
 
 ##### Docker Compose Example:
 ```yaml
 version: '3.8'
 services:
-  multi-mcp:
+  multi-mcp-with-knowledge:
     build: .
-    volumes:
-      - ./memory:/app/memory:rw
-    environment:
-      - KNOWLEDGE_GRAPH_MEMORY_PATH=/app/memory/knowledge-graph.jsonl
     ports:
       - "8080:8080"
+    volumes:
+      - ./memory:/app/memory:rw
+      - ./config-with-knowledge.json:/app/mcp.json:ro
+    environment:
+      - KNOWLEDGE_GRAPH_MEMORY_PATH=/app/memory/knowledge-graph.jsonl
+    restart: unless-stopped
 ```
 
 #### File Permissions Strategy:
@@ -185,6 +241,56 @@ All tools follow: `mcp__multi-mcp__{server_name}_{tool_name}`
 
 ---
 
+## Multi-MCP Setup and Deployment Insights
+
+### From Setup Guide Analysis:
+
+#### Production Deployment Options:
+
+**VPS Deployment Pattern**:
+```bash
+# Install and run multi-mcp on VPS
+uv run main.py --transport sse --host 0.0.0.0 --port 8080
+
+# Configure Claude Code locally to connect remotely
+claude mcp add --transport sse multi-mcp https://your-vps-ip:8080/sse
+```
+
+**Kubernetes Deployment**:
+```yaml
+# Use existing K8s manifest
+kubectl apply -f examples/k8s/multi-mcp.yaml
+
+# Expose via LoadBalancer
+apiVersion: v1
+kind: Service
+metadata:
+  name: multi-mcp-lb
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: multi-mcp
+```
+
+#### Dynamic Server Management:
+```bash
+# Add servers at runtime via API
+curl -X POST http://localhost:8080/mcp_servers \
+  -H "Content-Type: application/json" \
+  -d @new-server-config.json
+
+# List active servers
+curl http://localhost:8080/mcp_servers
+
+# Remove servers
+curl -X DELETE http://localhost:8080/mcp_servers/server-name
+```
+
+---
+
 ## Integration Benefits
 
 ### 1. Enhanced Multi-MCP Capabilities
@@ -212,26 +318,39 @@ All tools follow: `mcp__multi-mcp__{server_name}_{tool_name}`
 ### Phase 1: Basic Integration (Immediate)
 **Status**: Can be implemented TODAY using Option 2 (Dynamic API)
 
-1. **Add to Configuration**: Include knowledge-graph server in runtime config
-2. **Test Integration**: Verify tool namespacing and basic functionality  
-3. **Memory File Setup**: Configure persistent storage paths
-4. **Docker Volume Mounting**: Implement persistent volume strategy
+1. **Start Multi-MCP in SSE Mode**:
+   ```bash
+   cd multi-mcp
+   uv run main.py --transport sse --host 0.0.0.0 --port 8080
+   ```
 
-**Implementation**:
-```bash
-# Start multi-mcp in SSE mode
-uv run main.py --transport sse --host 0.0.0.0 --port 8080
+2. **Add Knowledge Graph Server via API**:
+   ```bash
+   curl -X POST http://localhost:8080/mcp_servers \
+     -H "Content-Type: application/json" \
+     -d '{
+       "knowledge-graph": {
+         "command": "npx",
+         "args": ["-y", "@shaneholloman/mcp-knowledge-graph", "--memory-path", "./memory/multi-mcp-knowledge.jsonl"]
+       }
+     }'
+   ```
 
-# Add knowledge graph server dynamically
-curl -X POST http://localhost:8080/mcp_servers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "knowledge-graph": {
-      "command": "npx",
-      "args": ["-y", "@shaneholloman/mcp-knowledge-graph", "--memory-path", "./memory/multi-mcp-knowledge.jsonl"]
-    }
-  }'
-```
+3. **Verify Integration**:
+   ```bash
+   # Check available tools
+   curl http://localhost:8080/mcp_tools
+   
+   # Should show knowledge graph tools with naming pattern:
+   # knowledge-graph_add_memory
+   # knowledge-graph_search_nodes
+   # knowledge-graph_read_graph
+   ```
+
+4. **Configure Claude Code**:
+   ```bash
+   claude mcp add --transport sse multi-mcp http://127.0.0.1:8080/sse
+   ```
 
 ### Phase 2: Multi-Instance Support (Development Required)
 1. **Project-Specific Configs**: Create configuration templates for different projects
@@ -264,6 +383,8 @@ class MCPProxyServer:
 ## Recommended Configuration
 
 ### Immediate Implementation (Option 2 - Dynamic API):
+
+**Configuration File** (`config-with-knowledge.json`):
 ```json
 {
   "mcpServers": {
@@ -280,28 +401,32 @@ class MCPProxyServer:
 }
 ```
 
-### Docker Configuration:
-```dockerfile
-# Volume strategy
-VOLUME ["/app/memory"]
-
-# Environment configuration
-ENV KNOWLEDGE_GRAPH_MEMORY_PATH=/app/memory/knowledge-graph.jsonl
+**Docker Command** (based on setup guide pattern):
+```bash
+docker run -d -p 8080:8080 \
+  --name multi-mcp-knowledge \
+  -v $(pwd)/memory:/app/memory:rw \
+  -v $(pwd)/config-with-knowledge.json:/app/mcp.json:ro \
+  multi-mcp:latest --transport sse --host 0.0.0.0
 ```
 
 ### Multi-Instance Isolation (Short-term):
 ```bash
 # Project A instance
-docker run -p 8080:8080 \
+docker run -d -p 8080:8080 \
+  --name multi-mcp-project-a \
   -v ./project-a-memory:/app/memory \
+  -v ./project-a-config.json:/app/mcp.json \
   -e PROJECT_ID=project-a \
-  multi-mcp
+  multi-mcp:latest --transport sse --host 0.0.0.0
 
 # Project B instance  
-docker run -p 8081:8080 \
+docker run -d -p 8081:8080 \
+  --name multi-mcp-project-b \
   -v ./project-b-memory:/app/memory \
+  -v ./project-b-config.json:/app/mcp.json \
   -e PROJECT_ID=project-b \
-  multi-mcp
+  multi-mcp:latest --transport sse --host 0.0.0.0
 ```
 
 ---
@@ -312,7 +437,7 @@ docker run -p 8081:8080 \
 - **MCP Protocol Compatibility**: Perfect match
 - **File-based Storage**: Reliable and container-friendly
 - **STDIO Transport**: Fully supported by multi-mcp
-- **Tool Namespacing**: Works seamlessly with existing pattern
+- **Tool Namespacing**: Works seamlessly with existing pattern (fixed naming convention)
 
 ### Medium Risk Areas ⚠️
 - **Memory File Conflicts**: Risk of multiple instances sharing files (mitigated by proper configuration)
@@ -323,6 +448,30 @@ docker run -p 8081:8080 \
 - **Multi-Instance Isolation**: Requires careful configuration or multi-mcp enhancements
 - **Session Management**: Need to track which client belongs to which project
 - **Configuration Complexity**: Multiple moving parts for full isolation
+
+---
+
+## Security and Production Considerations
+
+### From Setup Guide Security Recommendations:
+
+#### Remote Deployment Security:
+1. **HTTPS/TLS Termination**: Essential for production
+2. **Authentication**: OAuth2 recommended
+3. **IP Restrictions**: Limit access where possible
+4. **Environment Variables**: For sensitive data like API keys
+
+#### Local Development:
+1. **Localhost Only**: Keep development instances local
+2. **Tool Caution**: Be aware of tools that access internet
+
+### Production Readiness Checklist:
+- [ ] Health checks endpoint
+- [ ] Proper logging configuration
+- [ ] Metrics/monitoring setup
+- [ ] Authentication implementation
+- [ ] Rate limiting
+- [ ] Backup strategy for knowledge graph files
 
 ---
 
@@ -342,20 +491,6 @@ docker run -p 8081:8080 \
 - **Node.js Runtime**: ~50MB base memory
 - **Knowledge Graph Data**: Variable based on usage
 - **File I/O**: Standard filesystem requirements
-
----
-
-## Security Considerations
-
-### File System Security:
-- **Volume Permissions**: Ensure proper read/write access
-- **File Isolation**: Separate memory files per project
-- **Backup Strategy**: Regular backups of knowledge graph files
-
-### Container Security:
-- **User Permissions**: Run container with appropriate user
-- **Volume Mounting**: Restrict access to necessary directories only
-- **Network Isolation**: Consider container networking requirements
 
 ---
 
@@ -420,13 +555,13 @@ docker run -p 8081:8080 \
 
 **Immediate (Today)**:
 - Use Option 2 (Dynamic Configuration API) with manual server naming for project isolation
-- Implement Docker volume mounting for persistence
+- Implement Docker volume mounting for persistence following setup guide patterns
 - Test basic functionality with single project
 
 **Short-term (1-2 weeks)**:
 - Implement environment variable support in multi-mcp for dynamic memory paths
 - Create project-specific configuration templates
-- Enhance Docker setup for multi-project support
+- Enhance Docker setup for multi-project support following production deployment patterns
 
 **Long-term (1-2 months)**:
 - Add project context awareness to multi-mcp API
@@ -473,12 +608,30 @@ curl http://localhost:8080/mcp_tools
 
 #### Dockerfile Enhancement:
 ```dockerfile
-# Add to existing multi-mcp Dockerfile
-VOLUME ["/app/memory"]
-RUN mkdir -p /app/memory && chmod 777 /app/memory
+# Building on existing multi-mcp Dockerfile
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-# Optional: Install knowledge graph server globally
-RUN npm install -g @shaneholloman/mcp-knowledge-graph
+# Copy existing multi-mcp setup
+COPY . /app
+WORKDIR /app
+
+# Add memory directory for knowledge graph
+RUN mkdir -p /app/memory && chmod 755 /app/memory
+
+# Volume for persistent memory
+VOLUME ["/app/memory"]
+
+# Install Node.js for knowledge graph server (if not already present)
+RUN apt-get update && apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/*
+
+# Environment configuration
+ENV MEMORY_PATH=/app/memory/knowledge-graph.jsonl
+
+# Expose port
+EXPOSE 8080
+
+# Start command
+CMD ["uv", "run", "main.py", "--transport", "sse", "--host", "0.0.0.0", "--port", "8080"]
 ```
 
 #### Docker Compose Configuration:
@@ -491,9 +644,11 @@ services:
       - "8080:8080"
     volumes:
       - ./projects/project-a/memory:/app/memory:rw
+      - ./projects/project-a/config.json:/app/mcp.json:ro
     environment:
       - PROJECT_ID=project-a
       - MEMORY_PATH=/app/memory/knowledge-graph.jsonl
+    restart: unless-stopped
     
   multi-mcp-project-b:
     build: .
@@ -501,9 +656,11 @@ services:
       - "8081:8080"
     volumes:
       - ./projects/project-b/memory:/app/memory:rw
+      - ./projects/project-b/config.json:/app/mcp.json:ro
     environment:
       - PROJECT_ID=project-b
       - MEMORY_PATH=/app/memory/knowledge-graph.jsonl
+    restart: unless-stopped
 ```
 
 ### Environment Variables:
@@ -517,8 +674,35 @@ export MULTI_MCP_PORT="8080"
 uv run main.py --transport sse --host 0.0.0.0 --port ${MULTI_MCP_PORT}
 ```
 
+### Production Systemd Service:
+```ini
+[Unit]
+Description=Multi-MCP Server with Knowledge Graph
+After=network.target
+
+[Service]
+Type=simple
+User=multimcp
+Group=multimcp
+WorkingDirectory=/opt/multi-mcp
+Environment=MEMORY_PATH=/opt/multi-mcp/memory/knowledge-graph.jsonl
+ExecStart=/opt/multi-mcp/.venv/bin/uv run main.py --transport sse --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=10
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/multi-mcp/memory
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ---
 
 **Investigation Complete**  
-**Saved**: 2025-06-27 11:40:51  
-**Context**: Full technical analysis ready for implementation planning
+**Updated**: 2025-06-27 11:59:20  
+**Context**: Enhanced with multi-mcp setup guide insights and production deployment patterns
