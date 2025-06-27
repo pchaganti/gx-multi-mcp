@@ -121,6 +121,9 @@ class MCPProxyServer(server.Server):
         """Aggregate prompts from all remote MCP servers and return a combined list."""
         all_prompts = []
         for name, client in self.client_manager.clients.items():
+            # Only call servers that support prompts capability
+            if not self.capabilities.get(name, {}).get('prompts'):
+                continue
             try:
                 prompts = await client.list_prompts()
                 all_prompts.extend(prompts.prompts)  # .prompts, not raw list
@@ -172,6 +175,9 @@ class MCPProxyServer(server.Server):
         """Aggregate resources from all remote MCP servers and return a combined list."""
         all_resources = []
         for name, client in self.client_manager.clients.items():
+            # Only call servers that support resources capability
+            if not self.capabilities.get(name, {}).get('resources'):
+                continue
             try:
                 resources = await client.list_resources()
                 all_resources.extend(resources.resources)  # .resources, not raw list
