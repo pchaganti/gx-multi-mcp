@@ -114,6 +114,7 @@ Configuration is JSON-based, defining backend MCP servers to connect to:
 - Use Rich logging with emoji prefixes: `✅ success`, `❌ errors`, `⚠️ warnings`
 - Log errors but don't raise exceptions for individual server failures
 - Gracefully handle missing tools/prompts/resources with appropriate error responses
+- **Capability Checks**: Always verify server capabilities before calling MCP methods to avoid "Method not found" errors
 
 ### Async Patterns
 - Use `AsyncExitStack` for managing multiple client lifecycles
@@ -133,6 +134,12 @@ Tools are internally namespaced using `_make_key()` and `_split_key()` static me
 - `_split_key(key)` splits namespaced keys back into `(server, tool)` tuples using first underscore
 - Namespaced tools are stored in `tool_to_server` dict mapping keys to `ToolMapping` objects
 - This allows multiple servers to expose tools with identical base names without conflicts
+
+### Capability Management
+- Server capabilities are checked during initialization and stored in `self.capabilities[name]`
+- `_list_prompts()` and `_list_resources()` only call servers that support those capabilities
+- Prevents "Method not found" errors when servers don't implement all MCP methods
+- Graceful handling of servers with different capability sets (tools-only vs full MCP servers)
 
 ### Transport Modes
 - **STDIO**: Pipe-based communication for CLI tools and local agents
