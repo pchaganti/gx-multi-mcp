@@ -209,3 +209,42 @@ All MCP tools are accessible through the multi-mcp proxy with the naming pattern
 - **All Servers**: ✅ Functional and responsive
 - **Tool Discovery**: All namespaced tools properly exposed through proxy
 - **Error Handling**: Graceful fallback for server-specific failures
+
+## 🚨 CRITICAL Git Workflow Rules
+
+### Mandatory File Creation Workflow
+**NEVER** create files remotely using GitHub MCP tools or API. **ALWAYS** follow this exact sequence:
+
+1. **Create Locally**: Use `Write` tool to create files in local filesystem
+2. **Stage**: `git add <file>` to stage changes
+3. **Commit**: `git commit -m "message"` to commit locally
+4. **Push**: `git push` to sync with remote
+
+### Absolutely Forbidden Operations
+❌ **NEVER** use `mcp__multi-mcp__github_create_or_update_file` for new files  
+❌ **NEVER** create files directly on remote repository  
+❌ **NEVER** bypass local Git workflow  
+❌ **NEVER** create divergence between local and remote  
+
+### Why This Matters
+- **Repository Integrity**: Maintains consistent Git history
+- **Collaboration**: Ensures all changes go through proper review process
+- **Conflict Prevention**: Avoids merge conflicts and divergence
+- **Workflow Compliance**: Follows standard Git practices
+
+### Emergency Recovery from Divergence
+If divergence occurs:
+1. `git stash` (save local changes)
+2. `git pull` (sync with remote)
+3. `git stash pop` (restore local changes)
+4. Resolve conflicts and follow proper workflow
+
+### Investigation Storage
+- **Location**: `claude/{investigation_id}/` directory structure
+- **Naming**: Use timestamp-based IDs for unique identification
+- **Example**: `claude/250627114051/investigation-file.md`
+
+### File Organization
+- **Investigations**: Store in `claude/{id}/` directories
+- **Documentation**: Keep in root or `docs/` as appropriate
+- **Configurations**: Use existing `examples/` structure
