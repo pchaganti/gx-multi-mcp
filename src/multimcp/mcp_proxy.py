@@ -121,6 +121,9 @@ class MCPProxyServer(server.Server):
         """Aggregate prompts from all remote MCP servers and return a combined list."""
         all_prompts = []
         for name, client in self.client_manager.clients.items():
+            # Only call servers that support prompts capability
+            if not self.capabilities.get(name, {}).get('prompts'):
+                continue
             try:
                 prompts = await client.list_prompts()
                 all_prompts.extend(prompts.prompts)  # .prompts, not raw list
@@ -172,6 +175,9 @@ class MCPProxyServer(server.Server):
         """Aggregate resources from all remote MCP servers and return a combined list."""
         all_resources = []
         for name, client in self.client_manager.clients.items():
+            # Only call servers that support resources capability
+            if not self.capabilities.get(name, {}).get('resources'):
+                continue
             try:
                 resources = await client.list_resources()
                 all_resources.extend(resources.resources)  # .resources, not raw list
@@ -305,10 +311,10 @@ class MCPProxyServer(server.Server):
 
     @staticmethod
     def _make_key(server_name: str, item_name: str) -> str:
-        """Returns a namespaced key like 'server::item' to uniquely identify items per server."""
-        return f"{server_name}::{item_name}"
+        """Returns a namespaced key like 'server_item' to uniquely identify items per server."""
+        return f"{server_name}_{item_name}"
 
     @staticmethod
     def _split_key(key: str) -> tuple[str, str]:
         """Splits a namespaced key back into (server, item)."""
-        return key.split("::", 1)
+        return key.split("_", 1)
